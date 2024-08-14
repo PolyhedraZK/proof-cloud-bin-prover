@@ -36,8 +36,13 @@ async fn main() {
     );
     let perm_prove = Arc::new(Mutex::new(perm.clone()));
     let perm_verify = Arc::new(Mutex::new(perm.clone()));
+    let ready_time = chrono::offset::Utc::now();
 
     // endpoints
+    let ready = warp::path("ready").map(move || {
+        info!("Received ready request.");
+        reply::with_status(format!("Ready since {:?}", ready_time), StatusCode::OK)
+    });
     let prove = warp::path("prove")
         .and(warp::body::bytes())
         .map(move |bytes: bytes::Bytes| {
@@ -140,7 +145,11 @@ async fn main() {
                 }
             }
         });
-    warp::serve(warp::post().and(prove.or(verify)))
-        .run((host, port))
-        .await;
+    warp::serve(
+        warp::post()
+            .and(prove.or(verify))
+            .or(warp::get().and(ready)),
+    )
+    .run((host, port))
+    .await;
 }
