@@ -1,14 +1,19 @@
+use rand::Rng;
 use reqwest;
+use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
-    io::{self, BufReader, Read, Write},
+    io::{BufReader, Read, Write},
 };
 use tiny_keccak::Hasher;
 
-const KECCAK_INSTANCE_NUM: usize = 8; // TODO LATER: change to 1365 along with the impl
 const WITNESS_GENERATED_MSG: &str = "witness generated";
-const VERIFIER_REPEAT_NUM: usize = 10;
-const BUFFER_SIZE: usize = 128 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MyWitness {
+    pub inputs: Vec<[u64; 25]>,
+}
+
 struct ServiceHandler {
     child: std::process::Child,
     port: u16,
@@ -16,7 +21,8 @@ struct ServiceHandler {
 
 fn start_service(service_bin: &str) -> ServiceHandler {
     // generate random port for the service
-    let port = rand::random::<u16>();
+    // let port = rand::thread_rng().gen_range(20000..30000);
+    let port = rand::thread_rng().gen_range(20000..30000);
     // run the service binary
     let child = std::process::Command::new(service_bin)
         .arg("127.0.0.1".to_string())
@@ -30,20 +36,34 @@ impl ServiceHandler {
     fn prove(&mut self, inputs: &[u8]) -> Vec<u8> {
         // connect to the service via http request
         let client = reqwest::blocking::Client::new();
+        // generate ran
+        let converted_input = MyWitness {
+            inputs: inputs
+                .chunks(64)
+                .map(|_| {
+                    // random output
+                    let mut output = [0u64; 25];
+                    for i in 0..25 {
+                        output[i] = rand::thread_rng().gen();
+                    }
+                    output
+                })
+                .collect::<Vec<_>>(),
+        };
         let res = client
             .post(&format!("http://127.0.0.1:{}/prove", self.port))
-            .body(inputs.to_vec())
+            .body(postcard::to_allocvec(&converted_input).unwrap())
             .send()
             .expect("Failed to send request");
         res.bytes().expect("Failed to read response").to_vec()
     }
-    fn verify(&mut self, inputs: &[u8], proof: &[u8]) -> bool {
+    fn verify(&mut self, public_inputs: &[u8], proof: &[u8]) -> bool {
         // connect to the service via http request
         let client = reqwest::blocking::Client::new();
         let mut body = Vec::new();
-        body.extend_from_slice(&(inputs.len() as u64).to_le_bytes());
+        body.extend_from_slice(&(public_inputs.len() as u64).to_le_bytes());
         body.extend_from_slice(&(proof.len() as u64).to_le_bytes());
-        body.extend_from_slice(inputs);
+        body.extend_from_slice(public_inputs);
         body.extend_from_slice(proof);
         let res = client
             .post(&format!("http://127.0.0.1:{}/verify", self.port))
@@ -77,6 +97,7 @@ fn prove(
     in_pipe: &mut BufReader<File>,
     out_pipe: &mut File,
     service_bin: &str,
+    keccak_instance_num: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // STEP 1: SPJ sends you the pipe filepath that handles the input output communication
     // STEP 2: Output your prover name, proof system name, and algorithm name
@@ -88,7 +109,7 @@ fn prove(
     // STEP 3: Prover make all precomputes in this step
     let mut service_handler = start_service(service_bin);
     // STEP 4: Output the Number of Keccak Instances
-    write_u64(out_pipe, KECCAK_INSTANCE_NUM as u64)?;
+    write_u64(out_pipe, keccak_instance_num as u64)?;
     // STEP 5: Read Input Data
     let input_bytes = read_blob(in_pipe)?;
     // STEP 6: Hash the Data
@@ -113,6 +134,7 @@ fn verify(
     in_pipe: &mut BufReader<File>,
     out_pipe: &mut File,
     service_bin: &str,
+    verifier_repeat_num: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // STEP 9: SPJ starts your verifier by providing the pipe filepath that handles the input output communication
     let mut service_handler = start_service(service_bin);
@@ -122,11 +144,11 @@ fn verify(
     let pis = read_blob(in_pipe)?;
     // STEP 11: Verify the Proof, and send back result
     let mut result = false;
-    for _ in 0..VERIFIER_REPEAT_NUM {
+    for _ in 0..verifier_repeat_num {
         result = service_handler.verify(&pis, &proof);
     }
-    write_byte_array(out_pipe, &[if result { 0x00u8 } else { 0xffu8 }])?;
-    write_byte_array(out_pipe, VERIFIER_REPEAT_NUM.to_le_bytes().as_ref())?; // why not number this time?
+    write_byte_array(out_pipe, &[if result { 0xffu8 } else { 0x00u8 }])?;
+    write_byte_array(out_pipe, verifier_repeat_num.to_le_bytes().as_ref())?; // why not number this time?
 
     out_pipe.flush()?;
     service_handler.stop();
@@ -136,17 +158,29 @@ fn verify(
 fn main() -> std::io::Result<()> {
     // parse arg
     let args = std::env::args().collect::<Vec<String>>();
-    // assert_eq!(args.len(), 2, "Usage: proof-arena-integration <bin_loc> <mode:prove/verify> -toMe <in_pipe> -toSPJ <out_pipe>");
+    // assert_eq!(args.len(), 2, "Usage: proof-arena-integration <bin_loc> <mode:prove/verify> <mode_arg> -toMe <in_pipe> -toSPJ <out_pipe>");
     let service_bin = &args[1];
     let mode = &args[2];
-    let in_pipe_name = &args[4];
+    let in_pipe_name = &args[5];
     let mut in_pipe = std::io::BufReader::new(File::open(in_pipe_name)?);
-    let out_pipe_name = &args[6];
+    let out_pipe_name = &args[7];
     let mut out_pipe = File::create(out_pipe_name)?;
 
     match mode.as_str() {
-        "prove" => prove(&mut in_pipe, &mut out_pipe, service_bin).unwrap(),
-        "verify" => verify(&mut in_pipe, &mut out_pipe, service_bin).unwrap(),
+        "prove" => prove(
+            &mut in_pipe,
+            &mut out_pipe,
+            service_bin,
+            args[3].parse::<usize>().unwrap(),
+        )
+        .unwrap(),
+        "verify" => verify(
+            &mut in_pipe,
+            &mut out_pipe,
+            service_bin,
+            args[3].parse::<usize>().unwrap(),
+        )
+        .unwrap(),
         _ => panic!("Invalid mode: {}", mode),
     }
     Ok(())

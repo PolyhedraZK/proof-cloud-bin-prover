@@ -1,5 +1,5 @@
 target
 example_*.bin
 Cargo.lock
-result.json
+result*.json
 proof-arena-integration/SPJ

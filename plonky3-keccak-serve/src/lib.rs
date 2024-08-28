@@ -17,6 +17,7 @@ use p3_fri::TwoAdicFriPcs;
 
 // pub const NUM_HASHES: usize = 1365;
 pub const NUM_HASHES: usize = 8;
+// note that the value here only influence e2e testing
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MyWitness {
