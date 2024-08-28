@@ -1,5 +1,4 @@
 use rand::Rng;
-use reqwest;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
@@ -25,7 +24,7 @@ fn start_service(service_bin: &str) -> ServiceHandler {
     let port = rand::thread_rng().gen_range(20000..30000);
     // run the service binary
     let child = std::process::Command::new(service_bin)
-        .arg("127.0.0.1".to_string())
+        .arg("127.0.0.1")
         .arg(port.to_string())
         .spawn()
         .expect("Failed to start the service");
@@ -43,15 +42,15 @@ impl ServiceHandler {
                 .map(|_| {
                     // random output
                     let mut output = [0u64; 25];
-                    for i in 0..25 {
-                        output[i] = rand::thread_rng().gen();
+                    for v in &mut output {
+                        *v = rand::thread_rng().gen();
                     }
                     output
                 })
                 .collect::<Vec<_>>(),
         };
         let res = client
-            .post(&format!("http://127.0.0.1:{}/prove", self.port))
+            .post(format!("http://127.0.0.1:{}/prove", self.port))
             .body(postcard::to_allocvec(&converted_input).unwrap())
             .send()
             .expect("Failed to send request");
@@ -66,7 +65,7 @@ impl ServiceHandler {
         body.extend_from_slice(public_inputs);
         body.extend_from_slice(proof);
         let res = client
-            .post(&format!("http://127.0.0.1:{}/verify", self.port))
+            .post(format!("http://127.0.0.1:{}/verify", self.port))
             .body(body)
             .send()
             .expect("Failed to send request");
@@ -82,14 +81,13 @@ fn baseline_hasher(inputs: &[u8]) -> Vec<u8> {
     // chunk the inputs into 64-byte blocks
     inputs
         .chunks_exact(64)
-        .map(|x| {
+        .flat_map(|x| {
             let mut hasher = tiny_keccak::Keccak::v256();
             let mut output = [0u8; 32];
             hasher.update(x);
             hasher.finalize(&mut output);
             output
         })
-        .flatten()
         .collect()
 }
 
@@ -119,6 +117,7 @@ fn prove(
     write_string(out_pipe, WITNESS_GENERATED_MSG)?;
     // STEP 8: Output the Proof
     let proof = service_handler.prove(&input_bytes);
+    assert!(!proof.is_empty()); // sanity check
     write_byte_array(out_pipe, &proof)?;
     let vk = vec![];
     write_byte_array(out_pipe, &vk)?;
