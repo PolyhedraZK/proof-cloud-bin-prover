@@ -4,10 +4,9 @@ use p3_keccak_air::{generate_trace_rows, KeccakAir};
 use warp::{http::StatusCode, reply, Filter};
 
 use p3_fri::FriConfig;
-use p3_uni_stark::{prove, verify, StarkConfig};
+use p3_uni_stark::{prove, verify};
 use plonky3_keccak_serve::*;
 
-use std::sync::{Arc, Mutex};
 
 #[tokio::main]
 async fn main() {
@@ -26,14 +25,6 @@ async fn main() {
         .try_into()
         .unwrap();
     let port = args[2].parse().unwrap();
-
-    // copied above
-
-    // let perm = Perm::new_from_rng_128(
-    //     Poseidon2ExternalMatrixGeneral,
-    //     DiffusionMatrixBabyBear::default(),
-    //     &mut thread_rng(),
-    // );
     let ready_time = chrono::offset::Utc::now();
 
     // endpoints
@@ -87,7 +78,7 @@ async fn main() {
                 u64::from_le_bytes(pis_and_proof_bytes[0..8].try_into().unwrap()) as usize;
             let length_of_proof_bytes =
                 u64::from_le_bytes(pis_and_proof_bytes[8..16].try_into().unwrap()) as usize;
-            let pis_bytes = &pis_and_proof_bytes[16..16 + length_of_pis_bytes];
+            let _pis_bytes = &pis_and_proof_bytes[16..16 + length_of_pis_bytes];
             let proof_bytes = &pis_and_proof_bytes
                 [16 + length_of_pis_bytes..16 + length_of_pis_bytes + length_of_proof_bytes];
             // keccak do not need pis

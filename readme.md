@@ -51,3 +51,28 @@ cargo run -- 127.0.0.1 3030
 ```sh
 python3 ./scripts/test_http.py  # need "requests" package
 ```
+
+
+## Build plonky3 keccak for integration
+
+Requirements: SPJ binary at `proof-arena-integration/SPJ`, you can find it from [proof arena repo](https://github.com/PolyhedraZK/proof-arena).
+
+- Build service with release mode
+
+```sh
+cd plonky3-keccak-serve
+RUSTFLAGS="-Ctarget-cpu=native" cargo build --release
+```
+
+- Build integration code
+
+```sh
+cd proof-arena-integration
+RUSTFLAGS="-Ctarget-cpu=native" cargo build --release
+```
+
+- Run SPJ
+
+```sh
+./proof-arena-integration/run.sh
+```
