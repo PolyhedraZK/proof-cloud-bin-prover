@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
+[features]
+parallel = ["rayon"]
 
 [dependencies]
+rayon = { version = "1.7.0", optional = true }
 itertools = "0.13.0"
 p3-air = { git = "https://github.com/Plonky3/Plonky3.git" }
 p3-challenger = { git = "https://github.com/Plonky3/Plonky3.git" }
